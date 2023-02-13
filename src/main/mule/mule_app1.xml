@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="b7e09184-d204-4ff1-bf56-7d4ce3d7f03a" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="50c0dd88-7552-41c5-bc04-40a05cad37de" basePath="/cloudhub/api/v2" >
+		<http:request-connection protocol="HTTPS" host="anypoint.mulesoft.com" />
+	</http:request-config>
+	<http:request-config name="HTTP_Request_token_generation" doc:name="HTTP Request configuration" doc:id="c93591e7-5edd-45dd-b9f9-b084eda4ccad" basePath="/accounts" >
+		<http:request-connection protocol="HTTPS" host="anypoint.mulesoft.com" />
+	</http:request-config>
+	<configuration-properties doc:name="Configuration properties" doc:id="1a3c8c14-eb59-457b-bc30-127a549e7ebe" file="properties.yaml" />
+	<os:object-store name="Object_store" doc:name="Object store" doc:id="b16f306e-1059-4c91-8792-39f90bdb2884" entryTtl="60" expirationInterval="60" />
+	<ee:object-store-caching-strategy name="Caching_Strategy" doc:name="Caching Strategy" doc:id="4b0bc053-53da-433a-bf6d-8cb94bacfbb6" objectStore="Object_store" />
+	<flow name="mule_appFlow" doc:id="80f90188-61a3-4e2f-97ad-6ae274c30f1c" >
+		<http:listener doc:name="Listener" doc:id="d2a96cbd-f6e3-497a-b1b6-03f49443c5ac" config-ref="HTTP_Listener_config" path="/applications"/>
+		<flow-ref doc:name="Flow Reference" doc:id="2fd91895-69a2-4c32-8503-7e87150fa793" name="updateRuntime"/>
+		<ee:transform doc:name="Transform Message" doc:id="9464ac99-de89-4cb8-8319-2875904fca18" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+"message":"application started"]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="tokengeneration" doc:id="2d08139a-cc4d-4a25-9779-1c05fe7f84e4" >
+		<ee:cache doc:name="Cache" doc:id="608c1674-4186-43e7-8b3d-eddec06120e1" >
+			<http:request method="POST" doc:name="Request" doc:id="6d99bae7-ea7e-4ee6-99b0-70118958827d" config-ref="HTTP_Request_token_generation" path="/login">
+			<http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+	"username":"Chhav3004",
+	"password":"Chhavi30@"
+}]]]></http:body>
+		</http:request>
+		</ee:cache>
+		<ee:transform doc:name="Transform Message" doc:id="7c7af07a-f937-46b8-b24e-56f497c75aa1" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload.token_type ++ " " ++ payload.access_token]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="updateRuntime" doc:id="7952b55f-0cb4-44c7-9b5a-e9ff57da557b">
+		<flow-ref doc:name="Flow Reference" doc:id="d3b45fc2-5dea-4157-8d2d-0a634071dd86" name="tokengeneration" target="token"/>
+		<ee:transform doc:name="Transform Message" doc:id="2d14e866-291f-41b4-b319-2d44976eab7e" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	"autoStart":true,
+	"appInfoJson":{"properties":{"username":"Chhavi"}}
+	
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<http:request method="PUT" doc:name="Request" doc:id="4ccfe423-f0aa-4a83-b2da-28f19d79fe3d" config-ref="HTTP_Request_token_generation" path="/applications/muleapp">
+			<http:headers ><![CDATA[#[output application/json
+---
+{
+	"x-anypnt-org-id" : "40ce9556-e6d5-4742-be38-069c9d223269",
+	"Authorization" : vars.token,
+	"x-anypnt-env-id" : "77d3e75e-fdfa-4099-8507-9700fcdcf449",
+	"Content-type": "application/json"
+}]]]></http:headers>
+		</http:request>
+	</flow>
+	<flow name="start-restart" doc:id="d413a287-534d-4015-b7ab-acc1d2702c55" >
+		<flow-ref doc:name="Flow Reference" doc:id="af0eae4e-3d98-4f99-ae29-73ccd079c952" name="tokengeneration" target="token"/>
+		<http:request method="PUT" doc:name="Request" doc:id="0ede7b56-9fb9-41e9-ad20-0498cb5ac339" config-ref="HTTP_Request_configuration" path="/applications">
+			<http:body><![CDATA[#[%dw 2.0
+output application/json
+---
+{
+    "action":"START",
+    "domains":[
+        "muleapp"
+        ]
+}]]]></http:body>
+			<http:headers><![CDATA[#[output application/json
+---
+{
+	"x-anypnt-org-id" : "40ce9556-e6d5-4742-be38-069c9d223269",
+	"Authorization" : vars.token,
+	"x-anypnt-env-id" : "77d3e75e-fdfa-4099-8507-9700fcdcf449",
+}]]]></http:headers>
+		</http:request>
+	</flow>
+</mule>
